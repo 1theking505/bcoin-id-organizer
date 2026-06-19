@@ -98,6 +98,27 @@
         .error { color: #ffa0a0; background: #4a1a1a; padding: 12px; border-radius: 16px; }
         .warning { background: #5a4a1e; padding: 6px 12px; border-radius: 40px; font-size: 12px; }
         .locked-controls { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
+        .input-with-toggle { position: relative; }
+        .input-with-toggle input { padding-right: 44px; }
+        .eye-btn {
+            position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+            background: none; border: none; cursor: pointer; font-size: 1rem; padding: 0;
+            color: #8888a0; line-height: 1;
+        }
+        .eye-btn:hover { color: #ffd966; }
+        .save-creds-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: #8888a0; }
+        .save-creds-row input[type="checkbox"] { width: auto; transform: scale(1.1); margin: 0; }
+        .success-banner {
+            background: #1a3a2a; border: 1px solid #3a7a5a; border-radius: 12px;
+            padding: 10px 16px; font-size: 13px; color: #7dff9a;
+        }
+        .cors-banner {
+            background: #3a2a0a; border: 1px solid #7a5a1a; border-radius: 12px;
+            padding: 10px 16px; font-size: 13px; color: #ffb84d;
+        }
+        .api-section-divider {
+            border: none; border-top: 1px solid #3c3c5a; margin: 14px 0;
+        }
     </style>
 </head>
 <body>
@@ -121,6 +142,65 @@
                 <label>&nbsp;</label>
                 <button id="parseBtn">🔍 Parse & Load</button>
             </div>
+        </div>
+    </div>
+
+    <!-- API Fetch Panel -->
+    <div class="card" id="apiFetchCard">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
+            <span style="font-size:1.1rem; font-weight:600; color:#ffd966;">🌐 Fetch from Bconomy API</span>
+            <span style="font-size:12px; color:#888;">— enter your credentials and we'll try to load your pets directly</span>
+        </div>
+        <div class="flex-row" style="margin-bottom:4px;">
+            <div class="form-group">
+                <label>🪙 Bconomy Player ID</label>
+                <input type="text" id="apiPlayerId" placeholder="Your numeric player ID" autocomplete="off">
+            </div>
+            <div class="form-group" style="flex:2">
+                <label>🔑 API Key</label>
+                <div class="input-with-toggle">
+                    <input type="password" id="apiKey" placeholder="Paste your API key here" autocomplete="off">
+                    <button class="eye-btn" id="apiKeyEyeBtn" title="Show / hide key" tabindex="-1">👁️</button>
+                </div>
+            </div>
+            <div class="form-group" style="flex:0 0 auto; min-width:unset;">
+                <label>&nbsp;</label>
+                <button id="apiFetchBtn">⬇️ Fetch Pets</button>
+            </div>
+        </div>
+        <!-- Remember credentials row -->
+        <div class="save-creds-row">
+            <input type="checkbox" id="saveCredsToggle">
+            <label for="saveCredsToggle" style="cursor:pointer; color:#8888a0; margin-bottom:0;">
+                Remember my Player ID &amp; API Key in this browser
+            </label>
+            <span style="color:#555; font-size:11px;">(stored locally, never sent anywhere except Bconomy)</span>
+        </div>
+        <hr class="api-section-divider">
+        <!-- Status / result area -->
+        <div id="apiFetchStatus" style="display:none; margin-bottom:10px;"></div>
+        <!-- Fallback: pre-filled commands -->
+        <div id="apiFetchFallback" style="display:none;">
+            <div class="cors-banner" style="margin-bottom:12px;">
+                ⚠️ <strong>Direct fetch was blocked by CORS.</strong> Bconomy's API doesn't allow browser requests — but you can run one of the commands below in a terminal. They save a <code>pets.json</code> file you can then <strong>drag into the drop zone above</strong> or paste into the JSON box.
+            </div>
+            <div style="margin-bottom:12px;">
+                <label>💻 PowerShell (Windows)</label>
+                <div style="position:relative;">
+                    <textarea id="cmdPowershell" rows="5" readonly style="font-size:11px; color:#b0e0ff; background:#0a0a16; resize:none;"></textarea>
+                    <button onclick="copyCmd('cmdPowershell', this)" style="position:absolute; top:6px; right:6px; padding:4px 12px; font-size:11px; border-radius:20px;">📋 Copy</button>
+                </div>
+            </div>
+            <div>
+                <label>🐧 curl (Mac / Linux / Windows with curl)</label>
+                <div style="position:relative;">
+                    <textarea id="cmdCurl" rows="4" readonly style="font-size:11px; color:#b0e0ff; background:#0a0a16; resize:none;"></textarea>
+                    <button onclick="copyCmd('cmdCurl', this)" style="position:absolute; top:6px; right:6px; padding:4px 12px; font-size:11px; border-radius:20px;">📋 Copy</button>
+                </div>
+            </div>
+            <p style="font-size:11px; color:#666; margin: 10px 0 0;">
+                💡 After running the command, the file <code>pets.json</code> will be saved in your Documents folder. Drag it into the drop zone at the top of this page.
+            </p>
         </div>
     </div>
 
@@ -707,6 +787,129 @@
         el.addEventListener('input',  () => { if (!locked) { currentDisplayPets = computeDisplayPets(); renderTable(); } });
         el.addEventListener('change', () => { if (!locked) { currentDisplayPets = computeDisplayPets(); renderTable(); } });
     });
+
+    // ─── API Fetch ────────────────────────────────────────────────────────────
+    const apiFetchBtn      = document.getElementById('apiFetchBtn');
+    const apiPlayerIdInput = document.getElementById('apiPlayerId');
+    const apiKeyInput      = document.getElementById('apiKey');
+    const apiKeyEyeBtn     = document.getElementById('apiKeyEyeBtn');
+    const saveCredsToggle  = document.getElementById('saveCredsToggle');
+    const apiFetchStatus   = document.getElementById('apiFetchStatus');
+    const apiFetchFallback = document.getElementById('apiFetchFallback');
+
+    // ── Restore saved credentials on load ──
+    (function restoreCredentials() {
+        try {
+            const saved = localStorage.getItem('bconomy_creds');
+            if (saved) {
+                const { playerId, apiKey, saveEnabled } = JSON.parse(saved);
+                if (saveEnabled) {
+                    if (playerId) apiPlayerIdInput.value = playerId;
+                    if (apiKey)   apiKeyInput.value      = apiKey;
+                    saveCredsToggle.checked = true;
+                }
+            }
+        } catch(e) { /* ignore */ }
+    })();
+
+    // ── Eye toggle for API key ──
+    apiKeyEyeBtn.onclick = () => {
+        const isHidden = apiKeyInput.type === 'password';
+        apiKeyInput.type = isHidden ? 'text' : 'password';
+        apiKeyEyeBtn.textContent = isHidden ? '🙈' : '👁️';
+    };
+
+    // ── Save/clear credentials when checkbox or fields change ──
+    function persistCredentials() {
+        try {
+            if (saveCredsToggle.checked) {
+                localStorage.setItem('bconomy_creds', JSON.stringify({
+                    playerId:    apiPlayerIdInput.value.trim(),
+                    apiKey:      apiKeyInput.value.trim(),
+                    saveEnabled: true
+                }));
+            } else {
+                localStorage.removeItem('bconomy_creds');
+            }
+        } catch(e) { /* ignore */ }
+    }
+    saveCredsToggle.addEventListener('change', persistCredentials);
+    apiPlayerIdInput.addEventListener('input', () => { if (saveCredsToggle.checked) persistCredentials(); });
+    apiKeyInput.addEventListener('input',      () => { if (saveCredsToggle.checked) persistCredentials(); });
+
+    function setFetchStatus(msg, type) {
+        apiFetchStatus.style.display = 'block';
+        const cls = type === 'success' ? 'success-banner' : type === 'cors' ? 'cors-banner' : '';
+        apiFetchStatus.innerHTML = cls
+            ? `<div class="${cls}">${msg}</div>`
+            : `<span style="font-size:13px; color:${type};">${msg}</span>`;
+    }
+
+    function buildCommands(playerId, apiKey) {
+        const ps   = `cd ~\\Documents\n$body = @{type='pets/userPetsAndEggs'; id=${playerId}} | ConvertTo-Json\n$result = Invoke-RestMethod -Uri 'https://bconomy.net/api/data' -Method Post -Headers @{'x-api-key'='${apiKey}'} -Body $body -ContentType 'application/json'\n$result | ConvertTo-Json -Depth 10 | Out-File pets.json`;
+        const curl = `curl -s -X POST https://bconomy.net/api/data \\\n  -H "Content-Type: application/json" \\\n  -H "x-api-key: ${apiKey}" \\\n  -d '{"type":"pets/userPetsAndEggs","id":${playerId}}' \\\n  -o ~/Documents/pets.json`;
+        document.getElementById('cmdPowershell').value = ps;
+        document.getElementById('cmdCurl').value       = curl;
+        apiFetchFallback.style.display = 'block';
+    }
+
+    function copyCmd(id, btn) {
+        const el = document.getElementById(id);
+        navigator.clipboard.writeText(el.value).then(() => {
+            const orig = btn.textContent;
+            btn.textContent = '✅ Copied!';
+            setTimeout(() => btn.textContent = orig, 1800);
+        });
+    }
+
+    apiFetchBtn.onclick = async () => {
+        const playerId = apiPlayerIdInput.value.trim();
+        const apiKey   = apiKeyInput.value.trim();
+        if (!playerId || !apiKey) {
+            setFetchStatus('❌ Please enter both your Player ID and API Key.', '#ffa0a0');
+            return;
+        }
+        persistCredentials();
+        apiFetchFallback.style.display = 'none';
+        setFetchStatus('⏳ Connecting to Bconomy…', '#aaa');
+        apiFetchBtn.disabled = true;
+        apiFetchBtn.textContent = '⏳ Fetching…';
+        try {
+            const res = await fetch('https://bconomy.net/api/data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+                body: JSON.stringify({ type: 'pets/userPetsAndEggs', id: Number(playerId) })
+            });
+            if (!res.ok) throw new Error(`Server returned ${res.status} ${res.statusText}`);
+            const data = await res.json();
+            const pets = data.pets || (Array.isArray(data) ? data : null);
+            if (!pets) throw new Error('Response received but no pets array found — check your Player ID and API key.');
+            setFetchStatus(`✅ Loaded <strong>${pets.length} pets</strong> directly from Bconomy! Scrolling to the table…`, 'success');
+            parseJSON(JSON.stringify(data));
+            // Scroll down to the table after a brief moment
+            setTimeout(() => {
+                const table = document.getElementById('tableContainer');
+                if (table) table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 300);
+        } catch (err) {
+            const isCors = err instanceof TypeError;
+            if (isCors) {
+                setFetchStatus('🚫 Direct fetch blocked — see the commands below.', 'cors');
+                buildCommands(playerId, apiKey);
+            } else {
+                setFetchStatus(`❌ ${err.message}`, '#ffa0a0');
+                buildCommands(playerId, apiKey);
+            }
+        } finally {
+            apiFetchBtn.disabled = false;
+            apiFetchBtn.textContent = '⬇️ Fetch Pets';
+        }
+    };
+
+    // Enter key in either field triggers fetch
+    [apiPlayerIdInput, apiKeyInput].forEach(el =>
+        el.addEventListener('keydown', e => { if (e.key === 'Enter') apiFetchBtn.click(); })
+    );
 </script>
 </body>
 </html>
