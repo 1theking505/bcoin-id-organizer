@@ -382,10 +382,9 @@
     </div>
 
     <footer>
-        ⚛️ Nuclear 1 &amp; 2 sort by: <strong>Species → Skin → Aura</strong> — all pets of the same species are grouped together, including aura pets with no skin.<br>
+        ⚛️ Nuclear 1 &amp; 2: <strong>Species → Skin → Aura</strong> — within each species+skin group, aura pets come first, no-aura last.<br>
         Nuclear 1 skin order: None → Alpha…Eta → Sunkissed…Static. Nuclear 2: Eta…Alpha → None → Sunkissed…Static.<br>
-        Nuclear 3 sorts by: <strong>Skin → Aura → Species</strong> — skin order: Eta…Alpha → Sunkissed…Static → Aura-only (no skin) → None last.<br>
-        ✨ Aura pets with no skin always stay with their species — never placed last.
+        Nuclear 3: <strong>Skin → Species → Aura</strong> — skin order: Eta…Alpha → Sunkissed…Static → None last. Within each skin+species, aura first, no-aura last.
     </footer>
 </div>
 
@@ -668,17 +667,14 @@
         const pinned   = lockedOrder.filter(p => pinnedIds.has(p.id));
         let   unpinned = lockedOrder.filter(p => !pinnedIds.has(p.id));
         unpinned.sort((a, b) => {
-            // 1. Species — primary key so all of the same species are always together
-            //    Aura pets with no skin stay inside their species block, never pushed out.
+            // 1. Species — all pets of the same species always group together
             const specA = SPECIES_INDEX.get(a.species?.toLowerCase()) ?? 999;
             const specB = SPECIES_INDEX.get(b.species?.toLowerCase()) ?? 999;
             if (specA !== specB) return specA - specB;
-            // 2. Skin — ranked before aura so same-skin pets always group together.
-            //    Aura-only pets (has aura, no skin) share the "None" skin slot and are
-            //    therefore naturally kept within their species block like any other pet.
+            // 2. Skin — within each species group (null/no skin = "None" via rankOf)
             const skinDiff = rankOf(skinIndexMap, a.skin) - rankOf(skinIndexMap, b.skin);
             if (skinDiff !== 0) return skinDiff;
-            // 3. Aura — within the same species+skin group (including "None" skin aura pets)
+            // 3. Aura — within same species+skin: aura pets first, no-aura last
             return rankOf(AURA_INDEX, a.aura) - rankOf(AURA_INDEX, b.aura);
         });
         lockedOrder = [...pinned, ...unpinned];
@@ -691,61 +687,17 @@
         if (!locked) return;
         const pinned   = lockedOrder.filter(p => pinnedIds.has(p.id));
         let   unpinned = lockedOrder.filter(p => !pinnedIds.has(p.id));
-
-        // Helper: does this pet have an aura but no skin?
-        // These pets must NOT be thrown to the "None" skin bucket at the end —
-        // they should stay grouped with their species alongside skinned pets.
-        function isAuraNoSkin(p) {
-            const hasSkin = p.skin && p.skin.toLowerCase() !== 'none';
-            const hasAura = p.aura && p.aura.toLowerCase() !== 'none';
-            return hasAura && !hasSkin;
-        }
-
         unpinned.sort((a, b) => {
-            const aIsAuraNoSkin = isAuraNoSkin(a);
-            const bIsAuraNoSkin = isAuraNoSkin(b);
-
-            // Both are aura-no-skin: sort together by species → aura (kept with their species)
-            if (aIsAuraNoSkin && bIsAuraNoSkin) {
-                const specA = SPECIES_INDEX.get(a.species?.toLowerCase()) ?? 999;
-                const specB = SPECIES_INDEX.get(b.species?.toLowerCase()) ?? 999;
-                if (specA !== specB) return specA - specB;
-                return rankOf(AURA_INDEX, a.aura) - rankOf(AURA_INDEX, b.aura);
-            }
-
-            // One is aura-no-skin, other is not: compare the aura-no-skin pet using its
-            // species position so it lands next to its species, not at the "None" skin end.
-            if (aIsAuraNoSkin || bIsAuraNoSkin) {
-                // Represent an aura-no-skin pet's position by its species rank,
-                // placed after all skinned pets of the same species but before the
-                // "no skin, no aura" bucket (rank 13) by using a fractional offset (12.5).
-                function effectiveSkinRank(p, isANS) {
-                    if (!isANS) return rankOf(SKIN_INDEX_3, p.skin);
-                    // Insert aura-no-skin pets between "Static" (rank 12) and "None" (rank 13)
-                    return 12.5;
-                }
-                const skinA = effectiveSkinRank(a, aIsAuraNoSkin);
-                const skinB = effectiveSkinRank(b, bIsAuraNoSkin);
-                if (skinA !== skinB) return skinA - skinB;
-                // Same effective skin rank: sort by species so same-species aura-no-skin
-                // pets land together
-                const specA = SPECIES_INDEX.get(a.species?.toLowerCase()) ?? 999;
-                const specB = SPECIES_INDEX.get(b.species?.toLowerCase()) ?? 999;
-                if (specA !== specB) return specA - specB;
-                return rankOf(AURA_INDEX, a.aura) - rankOf(AURA_INDEX, b.aura);
-            }
-
-            // Normal case: neither is aura-no-skin
             // 1. Skin — primary key (Eta…Alpha, specials, None last)
+            //    null/no skin counts as "None" via rankOf, so no special-casing needed.
             const skinDiff = rankOf(SKIN_INDEX_3, a.skin) - rankOf(SKIN_INDEX_3, b.skin);
             if (skinDiff !== 0) return skinDiff;
-            // 2. Aura — within each skin group
-            const auraDiff = rankOf(AURA_INDEX, a.aura) - rankOf(AURA_INDEX, b.aura);
-            if (auraDiff !== 0) return auraDiff;
-            // 3. Species — within each skin+aura group
+            // 2. Species — within each skin group, keep same-species pets together
             const specA = SPECIES_INDEX.get(a.species?.toLowerCase()) ?? 999;
             const specB = SPECIES_INDEX.get(b.species?.toLowerCase()) ?? 999;
-            return specA - specB;
+            if (specA !== specB) return specA - specB;
+            // 3. Aura — within same skin+species: aura pets first, no-aura last
+            return rankOf(AURA_INDEX, a.aura) - rankOf(AURA_INDEX, b.aura);
         });
         lockedOrder = [...pinned, ...unpinned];
         renderTable();
