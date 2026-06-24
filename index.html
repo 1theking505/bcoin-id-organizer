@@ -413,7 +413,8 @@
     const SKIN_INDEX_3 = new Map(SKIN_ORDER_3.map((s,i) => [s.toLowerCase(),i]));
 
     // ─── Aura order ──────────────────────────────────────────────────────────
-    const AURA_ORDER = ["None","Green","Purple","Orange","Cyan","Red","Pink","Blue","Yellow","Black","Deepskyblue","Magenta","White"];
+    // None last — within each skin group, aura pets come before no-aura pets
+    const AURA_ORDER = ["Green","Purple","Orange","Cyan","Red","Pink","Blue","Yellow","Black","Deepskyblue","Magenta","White","None"];
     const AURA_INDEX = new Map(AURA_ORDER.map((a,i) => [a.toLowerCase(),i]));
 
     // Case-insensitive rank lookup — treats null/undefined as "None"
