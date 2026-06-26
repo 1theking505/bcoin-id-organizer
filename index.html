@@ -350,6 +350,7 @@
                 <button id="nuclearOrderBtn">⚛️ Nuclear Order 1 (Species → Skin: None→Eta, Sunkissed…Static → Aura)</button>
                 <button id="nuclearOrder2Btn">⚛️ Nuclear Order 2 (Species → Skin: Eta→None, Sunkissed…Static → Aura)</button>
                 <button id="nuclearOrder3Btn">⚛️ Nuclear Order 3 (Skin: Eta…Alpha→Sunkissed…Static→None → Aura → Species)</button>
+                <button id="nuclearOrder4Btn">🌍 Nuclear Order 4 (Global Adv Type → Tier↓ → Skin↓ → Aura)</button>
                 <button id="copyIdsBtn">📋 Copy IDs Order</button>
             </div>
         </div>
@@ -357,6 +358,7 @@
             💡 <strong>Before locking:</strong> Pin rows you want fixed at the top, then drag to manually reorder.
             Once locked, pins and drag are frozen — run Nuclear Order to sort the rest, then copy IDs.
         </p>
+        <div id="advMismatchBanner" style="display:none; margin-top:10px; padding:10px 16px; border-radius:12px; font-size:13px;"></div>
     </div>
 
     <div id="statsPanel" class="stats">
@@ -384,7 +386,8 @@
     <footer>
         ⚛️ Nuclear 1 &amp; 2: <strong>Species → Skin → Aura</strong> — within each species+skin group, aura pets come first, no-aura last.<br>
         Nuclear 1 skin order: None → Alpha…Eta → Sunkissed…Static. Nuclear 2: Eta…Alpha → None → Sunkissed…Static.<br>
-        Nuclear 3: <strong>Skin → Species → Aura</strong> — skin order: Eta…Alpha → Sunkissed…Static → None last. Within each skin+species, aura first, no-aura last.
+        Nuclear 3: <strong>Skin → Species → Aura</strong> — skin order: Eta…Alpha → Sunkissed…Static → None last. Within each skin+species, aura first, no-aura last.<br>
+        🌍 Nuclear 4: <strong>Global Adv Type → Tier↓ → Skin↓ → Aura</strong> — groups by inherent pet bonus (Fish → Hunt → Explore → Mine), then highest tier first, then Eta…Alpha → None → specials last, then aura. Includes ⚠️ mismatch warning if any pet is on the wrong adventure type.
     </footer>
 </div>
 
@@ -411,6 +414,10 @@
     const SKIN_ORDER_3 = ["Eta","Zeta","Epsilon","Delta","Gamma","Beta","Alpha","Sunkissed","Grayscale","Whiteout","Overclocked","Signal","Static","None"];
     const SKIN_INDEX_3 = new Map(SKIN_ORDER_3.map((s,i) => [s.toLowerCase(),i]));
 
+    // Nuclear 4: base tiers best→worst (Eta…Alpha), then None, then specials last
+    const SKIN_ORDER_4 = ["Eta","Zeta","Epsilon","Delta","Gamma","Beta","Alpha","None","Sunkissed","Grayscale","Whiteout","Overclocked","Signal","Static"];
+    const SKIN_INDEX_4 = new Map(SKIN_ORDER_4.map((s,i) => [s.toLowerCase(),i]));
+
     // ─── Aura order ──────────────────────────────────────────────────────────
     // None last — within each skin group, aura pets come before no-aura pets
     const AURA_ORDER = ["Green","Purple","Orange","Cyan","Red","Pink","Blue","Yellow","Black","Deepskyblue","Magenta","White","None"];
@@ -427,6 +434,34 @@
         if (!adv) return 999;
         const idx = ADVENTURE_ORDER.indexOf(adv.toLowerCase());
         return idx === -1 ? 999 : idx;
+    }
+
+    // ─── Global Adventure Type (bonus type by species) ───────────────────────
+    // This is the INHERENT bonus type the pet gives, not where it's currently sent.
+    const GLOBAL_ADV_TYPE = {
+        // Fish
+        "dolphin":"fish","goose":"fish","otter":"fish","seal":"fish","turtle":"fish","whale":"fish",
+        "dragon":"fish","sauropod":"fish",
+        // Hunt
+        "crocodile":"hunt","eagle":"hunt","gorilla":"hunt","snake":"hunt","tiger":"hunt",
+        "scorpion":"hunt","owl":"hunt","phoenix":"hunt","tyrannosaurus":"hunt",
+        // Explore
+        "raccoon":"explore","dog":"explore","donkey":"explore","dove":"explore","junglefowl":"explore",
+        "kangaroo":"explore","mustang":"explore","ox":"explore","peacock":"explore","pig":"explore",
+        "poodle":"explore","rabbit":"explore","visitor":"explore","jack":"explore","snowman":"explore",
+        // Mine
+        "bat":"mine","lizard":"mine","rat":"mine","snail":"mine","cockroach":"mine",
+        "invader":"mine","ghost":"mine"
+    };
+    const GLOBAL_ADV_ORDER = ["fish","hunt","explore","mine"];
+    function getGlobalAdvRank(species) {
+        const type = GLOBAL_ADV_TYPE[(species || '').toLowerCase()];
+        if (!type) return 999;
+        const idx = GLOBAL_ADV_ORDER.indexOf(type);
+        return idx === -1 ? 999 : idx;
+    }
+    function getGlobalAdvType(species) {
+        return GLOBAL_ADV_TYPE[(species || '').toLowerCase()] || null;
     }
 
     // ─── Emoji map ───────────────────────────────────────────────────────────
@@ -479,6 +514,7 @@
     const nuclearOrderBtn    = document.getElementById('nuclearOrderBtn');
     const nuclearOrder2Btn   = document.getElementById('nuclearOrder2Btn');
     const nuclearOrder3Btn   = document.getElementById('nuclearOrder3Btn');
+    const nuclearOrder4Btn   = document.getElementById('nuclearOrder4Btn');
     const copyIdsBtn         = document.getElementById('copyIdsBtn');
     const searchInput        = document.getElementById('searchInput');
     const speciesFilter      = document.getElementById('speciesFilter');
@@ -701,6 +737,60 @@
         });
         lockedOrder = [...pinned, ...unpinned];
         renderTable();
+    }
+
+    // ─── Nuclear Mode 4: Global Adv Type → Tier↓ → Skin↓ → Aura ─────────────
+    function nuclearSortMode4() {
+        if (!locked) return;
+        const pinned   = lockedOrder.filter(p => pinnedIds.has(p.id));
+        let   unpinned = lockedOrder.filter(p => !pinnedIds.has(p.id));
+        unpinned.sort((a, b) => {
+            // 1. Global adventure type (Fish → Hunt → Explore → Mine → unknown)
+            const advDiff = getGlobalAdvRank(a.species) - getGlobalAdvRank(b.species);
+            if (advDiff !== 0) return advDiff;
+            // 2. Tier descending (higher tier = better = comes first)
+            const tierDiff = (b.tier ?? 0) - (a.tier ?? 0);
+            if (tierDiff !== 0) return tierDiff;
+            // 3. Skin: Eta→Alpha (base best→worst) → None → specials last
+            const skinDiff = rankOf(SKIN_INDEX_4, a.skin) - rankOf(SKIN_INDEX_4, b.skin);
+            if (skinDiff !== 0) return skinDiff;
+            // 4. Aura: has aura before no-aura
+            return rankOf(AURA_INDEX, a.aura) - rankOf(AURA_INDEX, b.aura);
+        });
+        lockedOrder = [...pinned, ...unpinned];
+        renderTable();
+        checkAdventureMismatches();
+    }
+
+    // ─── Adventure mismatch checker ───────────────────────────────────────────
+    function checkAdventureMismatches() {
+        const banner = document.getElementById('advMismatchBanner');
+        if (!banner) return;
+        // Check all pets currently loaded (not just locked order)
+        const petsToCheck = allPets.filter(p => p.adventureType);
+        const mismatched = petsToCheck.filter(p => {
+            const expected = getGlobalAdvType(p.species);
+            if (!expected) return false; // unknown species — skip
+            return p.adventureType.toLowerCase() !== expected.toLowerCase();
+        });
+        if (mismatched.length === 0) {
+            banner.style.display = 'block';
+            banner.style.background = '#1a3a2a';
+            banner.style.border = '1px solid #3a7a5a';
+            banner.style.color = '#7dff9a';
+            banner.innerHTML = `✅ All pets are on their correct adventure type (or not on adventure).`;
+        } else {
+            const examples = mismatched.slice(0, 5).map(p => {
+                const expected = getGlobalAdvType(p.species);
+                return `<strong>${p.name || p.species} #${p.id}</strong> (${p.species} → should be <em>${expected}</em>, is on <em>${p.adventureType}</em>)`;
+            }).join(', ');
+            const more = mismatched.length > 5 ? ` +${mismatched.length - 5} more` : '';
+            banner.style.display = 'block';
+            banner.style.background = '#4a1a1a';
+            banner.style.border = '1px solid #aa3a3a';
+            banner.style.color = '#ffa0a0';
+            banner.innerHTML = `⚠️ <strong>${mismatched.length} pet${mismatched.length > 1 ? 's are' : ' is'} on the wrong adventure type!</strong> ${examples}${more}`;
+        }
     }
 
     // ─── Copy IDs ─────────────────────────────────────────────────────────────
@@ -1067,6 +1157,7 @@
     nuclearOrderBtn.onclick  = () => { if (locked) nuclearSort(); };
     nuclearOrder2Btn.onclick = () => { if (locked) nuclearSortMode2(); };
     nuclearOrder3Btn.onclick = () => { if (locked) nuclearSortMode3(); };
+    nuclearOrder4Btn.onclick = () => { if (locked) nuclearSortMode4(); };
     copyIdsBtn.onclick       = () => { if (locked) copyIdsOrder(); };
 
     // Filters — only when not locked
